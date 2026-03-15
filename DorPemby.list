@@ -1,25 +1,26 @@
-#🌱youno#
-DOMAIN-SUFFIX,younoyes.com
-#🌱小姨子#
-DOMAIN-SUFFIX,gy1.emby.yun
-DOMAIN-SUFFIX,gy2.emby.yun
-DOMAIN-SUFFIX,gy3.emby.yun
-#🌱狗剩#
+#此库为直连和代理都可，也许代理更快❗️流量不够时切换用，emos、ykk111反代直连优秀
+
+#🌱狗剩- 直连优秀45M #
 DOMAIN-SUFFIX,gousen.cc.cd
+
+#🌱一之濑琴美- 直连优秀25M #
+DOMAIN-SUFFIX,emby.ichinosekotomi.com
 
 #🌱nyamedia#
 DOMAIN-SUFFIX,emby.bangumi.ca
-#🌱ROC#
+
+#🌱ROC— 直连优秀20M #
 DOMAIN-SUFFIX,emby.rochub.xyz
 DOMAIN-SUFFIX,emby.cf.rochub.xyz
+
 #🌱YEZI#
 DOMAIN-SUFFIX,wp.lyezi.cc
 #🌱KLemby#
 DOMAIN-SUFFIX,tyemby.klplay.top
-#🌱月饼#
+#🌱月饼— 直连优秀20M #
 DOMAIN-SUFFIX,emby.my
 DOMAIN-SUFFIX,a.emby.my
-#🌱稳健#
+#🌱稳健— 直连优秀15M #
 DOMAIN-SUFFIX,emby.wenjian.de
 #🌱南瓜#
 DOMAIN-SUFFIX,qiandu.de
@@ -31,7 +32,4 @@ DOMAIN-SUFFIX,emby.dnscf.dpdns.org
 #🌱hellohk#
 DOMAIN-SUFFIX,hellohk.cnmbyd.xyz
 
-#🌱xigua#
-DOMAIN-SUFFIX,www.yuntv.de
-DOMAIN-SUFFIX,xg.yuntv.de
-DOMAIN-SUFFIX,xigua.yuntv.de
+
