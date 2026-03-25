@@ -35,3 +35,10 @@ DOMAIN-SUFFIX,ulivetv.net
 DOMAIN-SUFFIX,efhie.com
 DOMAIN-SUFFIX,newpppp.com
 DOMAIN-SUFFIX,ceres9350.com
+
+# Emby / Forward&Stremio部署
+domain-keyword,justwatch
+domain-suffix,images.weserv.nl
+# tmdb 官网、api、海报、静态资源
+domain-suffix,themoviedb.org
+domain-suffix,tmdb.org
