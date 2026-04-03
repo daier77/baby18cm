@@ -66,9 +66,10 @@ async function operator(proxies = [], targetPlatform, context) {
     const nextUpdateStr = extFields['next_update']
     const resetHourStr = extFields['reset_hour']
     const resetDayStr = extFields['reset_day']
+    
     if (nextUpdateStr) {
       const nextTime = new Date(nextUpdateStr.replace(' ', 'T'))
-      if (!isNaN(nextTime.getTime()) && nextTime.getTime() - Date.now() <= 0) return '更新'
+      if (!isNaN(nextTime.getTime()) && nextTime.getTime() - Date.now() <= 0) return '可更新'
     }
     if (resetDayStr != null && resetDayStr !== '') {
       const days = parseInt(resetDayStr, 10)
@@ -91,7 +92,7 @@ async function operator(proxies = [], targetPlatform, context) {
     
     let infoName = ''
     if (args.showLastUpdate && lastUpdate) {
-      // 这里的 .replace(/-/g, '.') 会替换所有的横杠
+      // 强制替换所有横杠为点
       const shortTime = lastUpdate.slice(5, 16).replace(/-/g, '.')
       infoName = `${shortTime} | ${showT.value} ${showT.unit}`
       const resetStr = formatResetTime(extFields)
@@ -106,7 +107,7 @@ async function operator(proxies = [], targetPlatform, context) {
     const node = lastProxy && COMPATIBLE_TYPES.has(lastProxy.type?.toLowerCase())
     const dummyNode = { type: 'ss', server: '1.0.0.1', port: 443, cipher: 'aes-128-gcm', password: 'password' }
 
-    // 彻底重组节点，不再拼接原节点名
+    // 重新封装节点，彻底抛弃旧节点的所有名称字段
     const finalProxy = {
       ...(node ? lastProxy : dummyNode),
       name: `♾️ ${infoName}`
