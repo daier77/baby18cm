@@ -1,15 +1,9 @@
-/**
- * 精简版订阅信息脚本
- * 预期输出：♾️ 03.14 10:55 | 151.71 MB | 22⏰
- */
 async function operator(proxies = [], targetPlatform, context) {
   let args = $arguments || {}
   const $ = $substore
-  const { parseFlowHeaders, getFlowHeaders, flowTransfer, getRmainingDays, normalizeFlowHeader } = flowUtils
+  const { parseFlowHeaders, getFlowHeaders, flowTransfer, normalizeFlowHeader } = flowUtils
   const sub = context.source[proxies?.[0]?._subName || proxies?.[0]?.subName]
-  let subInfo
-  let flowInfo
-  let rawSubInfo = ''
+  let subInfo, flowInfo, rawSubInfo = ''
 
   if (sub.source !== 'local' || ['localFirst', 'remoteFirst'].includes(sub.mergeSources)) {
     try {
@@ -28,22 +22,14 @@ async function operator(proxies = [], targetPlatform, context) {
         }
       }
       if (!urlArgs.noFlow && /^https?/.test(url)) {
-        flowInfo = await getFlowHeaders(
-          urlArgs?.insecure ? `${url}#insecure` : url,
-          urlArgs.flowUserAgent,
-          undefined,
-          sub.proxy,
-          urlArgs.flowUrl
-        )
+        flowInfo = await getFlowHeaders(urlArgs?.insecure ? `${url}#insecure` : url, urlArgs.flowUserAgent, undefined, sub.proxy, urlArgs.flowUrl)
         if (flowInfo) {
           const headers = normalizeFlowHeader(flowInfo, true)
           if (headers?.['subscription-userinfo']) subInfo = headers['subscription-userinfo']
         }
       }
       args = { ...urlArgs, ...args }
-    } catch (err) {
-      $.error(`流量获取失败: ${err.message}`)
-    }
+    } catch (err) {}
   }
 
   if (sub.subUserinfo) {
@@ -51,9 +37,7 @@ async function operator(proxies = [], targetPlatform, context) {
     if (/^https?:\/\//.test(sub.subUserinfo)) {
       try {
         subUserInfo = await getFlowHeaders(undefined, undefined, undefined, sub.proxy, sub.subUserinfo)
-      } catch (e) {
-        $.error(`自定义链接错误: ${e.message}`)
-      }
+      } catch (e) {}
     } else {
       subUserInfo = sub.subUserinfo
     }
@@ -82,7 +66,6 @@ async function operator(proxies = [], targetPlatform, context) {
     const nextUpdateStr = extFields['next_update']
     const resetHourStr = extFields['reset_hour']
     const resetDayStr = extFields['reset_day']
-
     if (nextUpdateStr) {
       const nextTime = new Date(nextUpdateStr.replace(' ', 'T'))
       if (!isNaN(nextTime.getTime()) && nextTime.getTime() - Date.now() <= 0) return '更新'
@@ -93,16 +76,7 @@ async function operator(proxies = [], targetPlatform, context) {
     }
     if (resetHourStr != null && resetHourStr !== '') {
       const hour = parseInt(resetHourStr, 10)
-      if (!isNaN(hour)) {
-        if (nextUpdateStr) {
-          const nextTime = new Date(nextUpdateStr.replace(' ', 'T'))
-          if (!isNaN(nextTime.getTime())) {
-            const remHours = Math.ceil((nextTime.getTime() - Date.now()) / 3600000)
-            if (remHours > 0) return remHours === 1 ? `1h⏰` : `${hour}⏰`
-          }
-        }
-        return `${hour}⏰`
-      }
+      if (!isNaN(hour)) return `${hour}⏰`
     }
     return ''
   }
@@ -115,16 +89,16 @@ async function operator(proxies = [], targetPlatform, context) {
     if (args.showRemaining) show = total - show
     const showT = flowTransfer(Math.abs(show))
     
-    let name = ''
+    let infoName = ''
     if (args.showLastUpdate && lastUpdate) {
-      // 强制格式化日期 04-03 -> 04.03
-      const shortTime = lastUpdate.slice(5, 16).replace('-', '.')
-      name = `${shortTime} | ${showT.value} ${showT.unit}`
+      // 这里的 .replace(/-/g, '.') 会替换所有的横杠
+      const shortTime = lastUpdate.slice(5, 16).replace(/-/g, '.')
+      infoName = `${shortTime} | ${showT.value} ${showT.unit}`
       const resetStr = formatResetTime(extFields)
-      if (resetStr) name += ` | ${resetStr}`
+      if (resetStr) infoName += ` | ${resetStr}`
     } else {
       const totalT = flowTransfer(total)
-      name = `${showT.value} ${showT.unit} / ${totalT.value} ${totalT.unit}`
+      infoName = `${showT.value} ${showT.unit} / ${totalT.value} ${totalT.unit}`
     }
 
     const COMPATIBLE_TYPES = new Set(['ss', 'trojan', 'vmess', 'vless'])
@@ -132,11 +106,12 @@ async function operator(proxies = [], targetPlatform, context) {
     const node = lastProxy && COMPATIBLE_TYPES.has(lastProxy.type?.toLowerCase())
     const dummyNode = { type: 'ss', server: '1.0.0.1', port: 443, cipher: 'aes-128-gcm', password: 'password' }
 
-    // 强制只保留 ♾️ 前缀 + 精简后的 name，不读取任何旧节点名称
-    proxies.unshift({
+    // 彻底重组节点，不再拼接原节点名
+    const finalProxy = {
       ...(node ? lastProxy : dummyNode),
-      name: `♾️ ${name}`,
-    })
+      name: `♾️ ${infoName}`
+    }
+    proxies.unshift(finalProxy)
   }
 
   return proxies
