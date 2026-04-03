@@ -1,6 +1,6 @@
 /**
  * 精简版订阅信息脚本
- * 格式：♾️ MM.DD HH:mm | 流量 | 重置信息⏰
+ * 预期输出：♾️ 03.14 10:55 | 151.71 MB | 22⏰
  */
 async function operator(proxies = [], targetPlatform, context) {
   let args = $arguments || {}
@@ -37,14 +37,12 @@ async function operator(proxies = [], targetPlatform, context) {
         )
         if (flowInfo) {
           const headers = normalizeFlowHeader(flowInfo, true)
-          if (headers?.['subscription-userinfo']) {
-            subInfo = headers['subscription-userinfo']
-          }
+          if (headers?.['subscription-userinfo']) subInfo = headers['subscription-userinfo']
         }
       }
       args = { ...urlArgs, ...args }
     } catch (err) {
-      $.error(`获取流量错误: ${err.message}`)
+      $.error(`流量获取失败: ${err.message}`)
     }
   }
 
@@ -89,12 +87,10 @@ async function operator(proxies = [], targetPlatform, context) {
       const nextTime = new Date(nextUpdateStr.replace(' ', 'T'))
       if (!isNaN(nextTime.getTime()) && nextTime.getTime() - Date.now() <= 0) return '更新'
     }
-
     if (resetDayStr != null && resetDayStr !== '') {
       const days = parseInt(resetDayStr, 10)
       if (!isNaN(days) && days > 0) return `${days}d⏰`
     }
-
     if (resetHourStr != null && resetHourStr !== '') {
       const hour = parseInt(resetHourStr, 10)
       if (!isNaN(hour)) {
@@ -112,29 +108,23 @@ async function operator(proxies = [], targetPlatform, context) {
   }
 
   if (subInfo) {
-    let { expires, total, usage: { upload, download } } = parseFlowHeaders(subInfo)
+    let { total, usage: { upload, download } } = parseFlowHeaders(subInfo)
     const extFields = parseExtendedFields(rawSubInfo)
     const lastUpdate = extFields['last_update']
-    const date = expires ? new Date(expires * 1000).toLocaleDateString('sv') : ''
     let show = upload + download
     if (args.showRemaining) show = total - show
     const showT = flowTransfer(Math.abs(show))
-    const totalT = flowTransfer(total)
-    let name
-
+    
+    let name = ''
     if (args.showLastUpdate && lastUpdate) {
+      // 强制格式化日期 04-03 -> 04.03
       const shortTime = lastUpdate.slice(5, 16).replace('-', '.')
       name = `${shortTime} | ${showT.value} ${showT.unit}`
       const resetStr = formatResetTime(extFields)
-      if (resetStr) name = `${name} | ${resetStr}`
+      if (resetStr) name += ` | ${resetStr}`
     } else {
-      let remainingDays
-      try {
-        remainingDays = getRmainingDays({ resetDay: args.resetDay, startDate: args.startDate, cycleDays: args.cycleDays })
-      } catch (e) {}
+      const totalT = flowTransfer(total)
       name = `${showT.value} ${showT.unit} / ${totalT.value} ${totalT.unit}`
-      if (remainingDays) name = `${name} | ${remainingDays}d`
-      if (date) name = `${name} | ${date}`
     }
 
     const COMPATIBLE_TYPES = new Set(['ss', 'trojan', 'vmess', 'vless'])
@@ -142,6 +132,7 @@ async function operator(proxies = [], targetPlatform, context) {
     const node = lastProxy && COMPATIBLE_TYPES.has(lastProxy.type?.toLowerCase())
     const dummyNode = { type: 'ss', server: '1.0.0.1', port: 443, cipher: 'aes-128-gcm', password: 'password' }
 
+    // 强制只保留 ♾️ 前缀 + 精简后的 name，不读取任何旧节点名称
     proxies.unshift({
       ...(node ? lastProxy : dummyNode),
       name: `♾️ ${name}`,
