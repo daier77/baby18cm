@@ -1,85 +1,80 @@
 /**
- * 合并订阅流量统计全量版
- * 格式：♾️ MM.DD HH:mm | Y** L** P** | 12⏰
+ * 已用流量统计版（极致兼容）
+ * 格式：♾️ MM.DD HH:mm | Y已用 L已用 P已用 | 12⏰
  */
 async function operator(proxies = [], targetPlatform, context) {
   const $ = $substore
   const { parseFlowHeaders, getFlowHeaders, flowTransfer, normalizeFlowHeader } = flowUtils
-  const sub = context.source[proxies?.[0]?._subName || proxies?.[0]?.subName]
   
   const stats = {
-    ykk: { total: 0, used: 0 },
-    lx: { total: 0, used: 0 },
-    pq: { total: 0, used: 0 }
+    ykk: 0,
+    lx: 0,
+    pq: 0
   }
   
   let lastUpdate = ''
   let resetDisplay = ''
+  const subNames = new Set()
 
-  if (sub && sub.url) {
-    // 拆分合并订阅中的所有子链接
-    const urls = sub.url.split(/[\r\n]+/).map(u => u.trim()).filter(u => u.length > 0)
-    
-    for (const fullUrl of urls) {
-      try {
-        const [baseUrl, rawTag] = fullUrl.split('#')
-        // 请求子订阅流量头
-        const flowInfo = await getFlowHeaders(baseUrl, undefined, undefined, sub.proxy)
-        
-        if (flowInfo) {
-          const headers = normalizeFlowHeader(flowInfo, true)
-          const info = headers?.['subscription-userinfo']
-          
-          if (info) {
-            const { total, usage } = parseFlowHeaders(info)
-            const used = usage.upload + usage.download
-            const raw = typeof flowInfo === 'string' ? flowInfo : JSON.stringify(flowInfo)
-            const ext = parseFields(raw)
+  // 1. 遍历节点，找到它们所属的所有订阅源
+  for (const p of proxies) {
+    const sName = p._subName || p.subName
+    if (sName && !subNames.has(sName)) {
+      subNames.add(sName)
+      const sub = context.source[sName]
+      if (sub) {
+        try {
+          // 获取流量数据
+          const flowInfo = await getFlowHeaders(sub.url, undefined, undefined, sub.proxy, sub.subUserinfo)
+          if (flowInfo) {
+            const headers = normalizeFlowHeader(flowInfo, true)
+            const info = headers?.['subscription-userinfo']
+            if (info) {
+              const { usage } = parseFlowHeaders(info)
+              const usedVal = usage.upload + usage.download
+              const raw = typeof flowInfo === 'string' ? flowInfo : JSON.stringify(flowInfo)
+              const ext = parseFields(raw)
 
-            // 根据 URL 后的 # 标签进行匹配
-            const tag = rawTag ? decodeURIComponent(rawTag).toLowerCase() : ''
-            if (tag.includes('ykk')) {
-              stats.ykk.total += total; stats.ykk.used += used
-            } else if (tag.includes('良心')) {
-              stats.lx.total += total; stats.lx.used += used
-            } else if (tag.includes('赔钱')) {
-              stats.pq.total += total; stats.pq.used += used
+              // 2. 根据订阅源名字或节点名字识别分类
+              const label = (sName + (p.name || '')).toLowerCase()
+              if (label.includes('ykk')) stats.ykk += usedVal
+              else if (label.includes('良心')) stats.lx += usedVal
+              else if (label.includes('赔钱')) stats.pq += usedVal
+
+              if (!lastUpdate && ext.last_update) lastUpdate = ext.last_update
+              if (!resetDisplay) resetDisplay = formatReset(ext)
             }
-
-            // 提取更新时间和重置时间
-            if (!lastUpdate && ext.last_update) lastUpdate = ext.last_update
-            if (!resetDisplay) resetDisplay = formatReset(ext)
           }
-        }
-      } catch (e) {
-        $.error(`子链接请求失败: ${fullUrl}`)
+        } catch (e) {}
       }
     }
   }
 
-  // 流量单位精简处理
-  const getStr = (s) => {
-    const rem = s.total - s.used
-    if (s.total === 0) return '0M'
-    const t = flowTransfer(Math.abs(rem))
+  // 3. 流量单位转换（显示已用数值）
+  const getUsedStr = (bytes) => {
+    if (bytes === 0) return '0M'
+    const t = flowTransfer(bytes)
     const unit = t.unit.charAt(0).toUpperCase()
     return `${t.value}${unit}`
   }
 
-  const yStr = getStr(stats.ykk)
-  const lStr = getStr(stats.lx)
-  const pStr = getStr(stats.pq)
+  const yUsed = getUsedStr(stats.ykk)
+  const lUsed = getUsedStr(stats.lx)
+  const pUsed = getUsedStr(stats.pq)
 
-  // 处理时间格式
-  const timeStr = lastUpdate ? lastUpdate.slice(5, 16).replace(/-/g, '.') : '00.00 00:00'
-  const finalName = `♾️ ${timeStr} | Y${yStr} L${lStr} P${pStr} | ${resetDisplay || '12⏰'}`
+  // 4. 组装显示
+  const now = new Date()
+  const timeStr = lastUpdate 
+    ? lastUpdate.slice(5, 16).replace(/-/g, '.') 
+    : `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  
+  const finalName = `♾️ ${timeStr} | Y${yUsed} L${lUsed} P${pUsed} | ${resetDisplay || '12⏰'}`
 
-  // 节点兼容逻辑
+  // 5. 插入节点
   const TYPES = new Set(['ss', 'trojan', 'vmess', 'vless', 'hysteria2'])
   const lastNode = proxies.find(p => TYPES.has(p.type?.toLowerCase()))
   const dummy = { type: 'ss', server: '1.0.0.1', port: 443, cipher: 'aes-128-gcm', password: 'password' }
 
-  // 插入信息节点
   proxies.unshift({
     ...(lastNode || dummy),
     name: finalName
@@ -87,7 +82,6 @@ async function operator(proxies = [], targetPlatform, context) {
 
   return proxies
 
-  // 字段解析工具
   function parseFields(raw = '') {
     const res = {}
     raw.split(/[;,]/).forEach(s => {
@@ -97,7 +91,6 @@ async function operator(proxies = [], targetPlatform, context) {
     return res
   }
 
-  // 重置时间格式化
   function formatReset(ext) {
     if (ext.reset_day && parseInt(ext.reset_day) > 0) return `${ext.reset_day}d⏰`
     if (ext.reset_hour) return `${ext.reset_hour}⏰`
