@@ -1,59 +1,58 @@
 /**
- * 逻辑重组版：通过节点特征反向抓取流量
- * 格式：♾️ MM.DD HH:mm | Y已用 L已用 P已用 | 重置⏰
+ * 终极修正版：流量数据精准对齐
+ * 逻辑：直接正则抓取已用流量字段，不经过中间函数转换
  */
 async function operator(proxies = [], targetPlatform, context) {
   const $ = $substore
-  const { parseFlowHeaders, getFlowHeaders, flowTransfer, normalizeFlowHeader } = flowUtils
+  const { getFlowHeaders, flowTransfer, normalizeFlowHeader } = flowUtils
   
   const stats = { ykk: 0, lx: 0, pq: 0 }
   let lastUpdate = '', resetDisplay = ''
-  
-  // 建立订阅源与分类的映射表，避免重复请求
-  const subMap = new Map()
+  const checkedSubs = new Set()
 
-  // 1. 遍历节点，识别出所有参与合并的订阅源
   for (const p of proxies) {
     const sName = p._subName || p.subName
+    if (!sName || checkedSubs.has(sName)) continue
+
     const pName = (p.name || '').toLowerCase()
-    
     let type = ''
     if (pName.includes('ykk')) type = 'ykk'
     else if (pName.includes('良心')) type = 'lx'
     else if (pName.includes('赔钱')) type = 'pq'
-    
-    if (type && sName && !subMap.has(sName)) {
-      subMap.set(sName, type)
+
+    if (type) {
+      const sub = context.source[sName]
+      if (sub && sub.url) {
+        try {
+          const flowInfo = await getFlowHeaders(sub.url, undefined, undefined, sub.proxy, sub.subUserinfo)
+          if (flowInfo) {
+            const raw = typeof flowInfo === 'string' ? flowInfo : JSON.stringify(flowInfo)
+            
+            // 核心修复：直接从响应头字符串中正则提取 upload 和 download
+            // 格式通常为：upload=xxx; download=xxx; total=xxx;
+            const uMatch = raw.match(/upload=(\d+)/)
+            const dMatch = raw.match(/download=(\d+)/)
+            
+            if (uMatch && dMatch) {
+              const usedBytes = parseInt(uMatch[1], 10) + parseInt(dMatch[1], 10)
+              stats[type] += usedBytes
+            }
+
+            const ext = parseFields(raw)
+            if (!lastUpdate && ext.last_update) lastUpdate = ext.last_update
+            if (!resetDisplay) resetDisplay = formatReset(ext)
+          }
+        } catch (e) {}
+      }
+      checkedSubs.add(sName)
     }
   }
 
-  // 2. 针对识别出的订阅源发起流量请求
-  for (const [sName, type] of subMap.entries()) {
-    const sub = context.source[sName]
-    if (!sub || !sub.url) continue
-
-    try {
-      const flowInfo = await getFlowHeaders(sub.url, undefined, undefined, sub.proxy, sub.subUserinfo)
-      if (flowInfo) {
-        const headers = normalizeFlowHeader(flowInfo, true)
-        const info = headers?.['subscription-userinfo']
-        if (info) {
-          const { usage } = parseFlowHeaders(info)
-          stats[type] += (usage.upload + usage.download)
-          
-          const raw = typeof flowInfo === 'string' ? flowInfo : JSON.stringify(flowInfo)
-          const ext = parseFields(raw)
-          if (!lastUpdate && ext.last_update) lastUpdate = ext.last_update
-          if (!resetDisplay) resetDisplay = formatReset(ext)
-        }
-      }
-    } catch (e) {}
-  }
-
-  // 3. 流量单位转换
+  // 流量格式化 (强制转为 G 或 M，不显示多余小数)
   const formatUsed = (bytes) => {
     if (!bytes || bytes === 0) return '0M'
     const t = flowTransfer(bytes)
+    // 保持单位首字母大写
     return `${t.value}${t.unit.charAt(0).toUpperCase()}`
   }
 
@@ -61,14 +60,11 @@ async function operator(proxies = [], targetPlatform, context) {
   const lStr = formatUsed(stats.lx)
   const pStr = formatUsed(stats.pq)
 
-  // 4. 强制清理时间字符串，防止转义干扰
   const now = new Date()
   let timeStr = lastUpdate ? lastUpdate.slice(5, 16).replace(/-/g, '.') : 
     `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
   
-  // 核心：彻底过滤掉可能存在的 URL 编码字符
-  timeStr = decodeURIComponent(timeStr).replace(/%20/g, ' ')
-
+  timeStr = decodeURIComponent(timeStr).replace(/\s+/g, ' ')
   const finalName = `♾️ ${timeStr} | Y${yStr} L${lStr} P${pStr} | ${resetDisplay || '⏰'}`
 
   const TYPES = new Set(['ss', 'trojan', 'vmess', 'vless', 'hysteria2'])
