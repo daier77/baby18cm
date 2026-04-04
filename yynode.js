@@ -1,6 +1,5 @@
 /**
- * 多订阅流量已用版（订阅名配对版）
- * 逻辑：直接遍历 context.source，匹配订阅名，显示已用流量
+ * 逻辑重组版：通过节点特征反向抓取流量
  * 格式：♾️ MM.DD HH:mm | Y已用 L已用 P已用 | 重置⏰
  */
 async function operator(proxies = [], targetPlatform, context) {
@@ -9,30 +8,35 @@ async function operator(proxies = [], targetPlatform, context) {
   
   const stats = { ykk: 0, lx: 0, pq: 0 }
   let lastUpdate = '', resetDisplay = ''
-
-  // 1. 获取所有订阅源的 key
-  const sourceKeys = Object.keys(context.source)
   
-  for (const key of sourceKeys) {
-    const sub = context.source[key]
+  // 建立订阅源与分类的映射表，避免重复请求
+  const subMap = new Map()
+
+  // 1. 遍历节点，识别出所有参与合并的订阅源
+  for (const p of proxies) {
+    const sName = p._subName || p.subName
+    const pName = (p.name || '').toLowerCase()
+    
+    let type = ''
+    if (pName.includes('ykk')) type = 'ykk'
+    else if (pName.includes('良心')) type = 'lx'
+    else if (pName.includes('赔钱')) type = 'pq'
+    
+    if (type && sName && !subMap.has(sName)) {
+      subMap.set(sName, type)
+    }
+  }
+
+  // 2. 针对识别出的订阅源发起流量请求
+  for (const [sName, type] of subMap.entries()) {
+    const sub = context.source[sName]
     if (!sub || !sub.url) continue
 
     try {
-      // 2. 识别分类 (根据你在订阅源列表里的名字)
-      let type = ''
-      const name = key.toLowerCase()
-      if (name.includes('ykk')) type = 'ykk'
-      else if (name.includes('良心')) type = 'lx'
-      else if (name.includes('赔钱')) type = 'pq'
-      
-      if (!type) continue
-
-      // 3. 抓取该订阅流量
       const flowInfo = await getFlowHeaders(sub.url, undefined, undefined, sub.proxy, sub.subUserinfo)
       if (flowInfo) {
         const headers = normalizeFlowHeader(flowInfo, true)
         const info = headers?.['subscription-userinfo']
-        
         if (info) {
           const { usage } = parseFlowHeaders(info)
           stats[type] += (usage.upload + usage.download)
@@ -43,12 +47,10 @@ async function operator(proxies = [], targetPlatform, context) {
           if (!resetDisplay) resetDisplay = formatReset(ext)
         }
       }
-    } catch (e) {
-      $.error(`抓取 ${key} 失败`)
-    }
+    } catch (e) {}
   }
 
-  // 4. 流量单位转换
+  // 3. 流量单位转换
   const formatUsed = (bytes) => {
     if (!bytes || bytes === 0) return '0M'
     const t = flowTransfer(bytes)
@@ -59,14 +61,16 @@ async function operator(proxies = [], targetPlatform, context) {
   const lStr = formatUsed(stats.lx)
   const pStr = formatUsed(stats.pq)
 
-  // 5. 格式化日期 (去除转义干扰)
+  // 4. 强制清理时间字符串，防止转义干扰
   const now = new Date()
-  const timeStr = lastUpdate ? lastUpdate.slice(5, 16).replace(/-/g, '.') : 
+  let timeStr = lastUpdate ? lastUpdate.slice(5, 16).replace(/-/g, '.') : 
     `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
   
-  const finalName = `♾️ ${timeStr.trim()} | Y${yStr} L${lStr} P${pStr} | ${resetDisplay || '⏰'}`
+  // 核心：彻底过滤掉可能存在的 URL 编码字符
+  timeStr = decodeURIComponent(timeStr).replace(/%20/g, ' ')
 
-  // 6. 插入伪节点
+  const finalName = `♾️ ${timeStr} | Y${yStr} L${lStr} P${pStr} | ${resetDisplay || '⏰'}`
+
   const TYPES = new Set(['ss', 'trojan', 'vmess', 'vless', 'hysteria2'])
   const lastNode = proxies.find(p => TYPES.has(p.type?.toLowerCase()))
   const dummy = { type: 'ss', server: '1.0.0.1', port: 443, cipher: 'aes-128-gcm', password: 'password' }
