@@ -1,92 +1,303 @@
 /**
- * 终极修正版：多链接拆解统计
- * 格式：♾️ MM.DD HH:mm | Y已用 L已用 P已用 | 重置⏰
+
+ * 精简版订阅信息脚本
+
+ * 格式：♾️ MM.DD HH:mm | 流量 | 重置信息⏰
+
  */
+
 async function operator(proxies = [], targetPlatform, context) {
+
+  let args = $arguments || {}
+
   const $ = $substore
-  const { parseFlowHeaders, getFlowHeaders, flowTransfer, normalizeFlowHeader } = flowUtils
+
+  const { parseFlowHeaders, getFlowHeaders, flowTransfer, getRmainingDays, normalizeFlowHeader } = flowUtils
+
   const sub = context.source[proxies?.[0]?._subName || proxies?.[0]?.subName]
-  
-  const stats = { ykk: 0, lx: 0, pq: 0 }
-  let lastUpdate = '', resetDisplay = ''
 
-  if (sub && sub.url) {
-    // 强制拆分 URL，处理你在 Subs Check 里的多链接输入
-    const urls = sub.url.split(/[\r\n]+/).map(u => u.trim()).filter(u => u.length > 0)
-    
-    for (const fullUrl of urls) {
-      try {
-        const [baseUrl, tag] = fullUrl.split('#')
-        // 关键：逐个请求链接获取流量头
-        const flowInfo = await getFlowHeaders(baseUrl, undefined, undefined, sub.proxy)
-        
-        if (flowInfo) {
-          const headers = normalizeFlowHeader(flowInfo, true)
-          const info = headers?.['subscription-userinfo']
-          
-          if (info) {
-            const { usage } = parseFlowHeaders(info)
-            const usedVal = usage.upload + usage.download
-            const ext = parseFields(typeof flowInfo === 'string' ? flowInfo : JSON.stringify(flowInfo))
+  let subInfo
 
-            // 匹配 URL 后的 # 标签
-            const label = decodeURIComponent(tag || '').toLowerCase()
-            if (label.includes('ykk')) stats.ykk += usedVal
-            else if (label.includes('良心')) stats.lx += usedVal
-            else if (label.includes('赔钱')) stats.pq += usedVal
+  let flowInfo
 
-            if (!lastUpdate && ext.last_update) lastUpdate = ext.last_update
-            if (!resetDisplay) resetDisplay = formatReset(ext)
+  let rawSubInfo = ''
+
+
+
+  if (sub.source !== 'local' || ['localFirst', 'remoteFirst'].includes(sub.mergeSources)) {
+
+    try {
+
+      let url = `${sub.url}`.split(/[\r\n]+/)[0] || ''
+
+      let urlArgs = {}
+
+      let rawArgs = url.split('#')
+
+      url = rawArgs[0]
+
+      if (rawArgs.length > 1) {
+
+        try {
+
+          urlArgs = JSON.parse(decodeURIComponent(rawArgs[1]))
+
+        } catch (e) {
+
+          for (const pair of rawArgs[1].split('&')) {
+
+            const [key, value] = pair.split('=')
+
+            urlArgs[key] = value == null || value === '' ? true : decodeURIComponent(value)
+
           }
+
         }
-      } catch (e) {
-        $.error(`抓取失败: ${fullUrl}`)
+
       }
+
+      if (!urlArgs.noFlow && /^https?/.test(url)) {
+
+        flowInfo = await getFlowHeaders(
+
+          urlArgs?.insecure ? `${url}#insecure` : url,
+
+          urlArgs.flowUserAgent,
+
+          undefined,
+
+          sub.proxy,
+
+          urlArgs.flowUrl
+
+        )
+
+        if (flowInfo) {
+
+          const headers = normalizeFlowHeader(flowInfo, true)
+
+          if (headers?.['subscription-userinfo']) {
+
+            subInfo = headers['subscription-userinfo']
+
+          }
+
+        }
+
+      }
+
+      args = { ...urlArgs, ...args }
+
+    } catch (err) {
+
+      $.error(`获取流量错误: ${err.message}`)
+
     }
+
   }
 
-  // 转换已用流量格式
-  const formatUsed = (bytes) => {
-    if (!bytes || bytes === 0) return '0G'
-    const t = flowTransfer(bytes)
-    return `${t.value}${t.unit.charAt(0).toUpperCase()}`
+
+
+  if (sub.subUserinfo) {
+
+    let subUserInfo
+
+    if (/^https?:\/\//.test(sub.subUserinfo)) {
+
+      try {
+
+        subUserInfo = await getFlowHeaders(undefined, undefined, undefined, sub.proxy, sub.subUserinfo)
+
+      } catch (e) {
+
+        $.error(`自定义链接错误: ${e.message}`)
+
+      }
+
+    } else {
+
+      subUserInfo = sub.subUserinfo
+
+    }
+
+    const parts = [subUserInfo, flowInfo].filter(i => i != null).map(i => (typeof i === 'string' ? i : JSON.stringify(i)))
+
+    const headers = normalizeFlowHeader(parts.join(';'), true)
+
+    if (headers?.['subscription-userinfo']) {
+
+      subInfo = headers['subscription-userinfo']
+
+      rawSubInfo = parts.join(';')
+
+    }
+
   }
 
-  const yStr = formatUsed(stats.ykk)
-  const lStr = formatUsed(stats.lx)
-  const pStr = formatUsed(stats.pq)
 
-  // 处理日期显示
-  const now = new Date()
-  const timeStr = lastUpdate ? lastUpdate.slice(5, 16).replace(/-/g, '.') : 
-    `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-  
-  const finalName = `♾️ ${timeStr} | Y${yStr} L${lStr} P${pStr} | ${resetDisplay || '00⏰'}`
 
-  // 插入信息节点
-  const TYPES = new Set(['ss', 'trojan', 'vmess', 'vless', 'hysteria2'])
-  const lastNode = proxies.find(p => TYPES.has(p.type?.toLowerCase()))
-  const dummy = { type: 'ss', server: '1.0.0.1', port: 443, cipher: 'aes-128-gcm', password: 'password' }
+  function parseExtendedFields(raw = '') {
 
-  proxies.unshift({
-    ...(lastNode || dummy),
-    name: finalName
-  })
+    const result = {}
+
+    for (const segment of raw.split(/[;,]/)) {
+
+      const eqIdx = segment.indexOf('=')
+
+      if (eqIdx === -1) continue
+
+      const key = segment.slice(0, eqIdx).trim()
+
+      let value = segment.slice(eqIdx + 1).trim().replace(/^['"]|['"]$/g, '')
+
+      try { value = decodeURIComponent(value) } catch (e) {}
+
+      result[key] = value
+
+    }
+
+    return result
+
+  }
+
+
+
+  function formatResetTime(extFields) {
+
+    const nextUpdateStr = extFields['next_update']
+
+    const resetHourStr = extFields['reset_hour']
+
+    const resetDayStr = extFields['reset_day']
+
+
+
+    if (nextUpdateStr) {
+
+      const nextTime = new Date(nextUpdateStr.replace(' ', 'T'))
+
+      if (!isNaN(nextTime.getTime()) && nextTime.getTime() - Date.now() <= 0) return '更新'
+
+    }
+
+
+
+    if (resetDayStr != null && resetDayStr !== '') {
+
+      const days = parseInt(resetDayStr, 10)
+
+      if (!isNaN(days) && days > 0) return `${days}d⏰`
+
+    }
+
+
+
+    if (resetHourStr != null && resetHourStr !== '') {
+
+      const hour = parseInt(resetHourStr, 10)
+
+      if (!isNaN(hour)) {
+
+        if (nextUpdateStr) {
+
+          const nextTime = new Date(nextUpdateStr.replace(' ', 'T'))
+
+          if (!isNaN(nextTime.getTime())) {
+
+            const remHours = Math.ceil((nextTime.getTime() - Date.now()) / 3600000)
+
+            if (remHours > 0) return remHours === 1 ? `1h⏰` : `${hour}⏰`
+
+          }
+
+        }
+
+        return `${hour}⏰`
+
+      }
+
+    }
+
+    return ''
+
+  }
+
+
+
+  if (subInfo) {
+
+    let { expires, total, usage: { upload, download } } = parseFlowHeaders(subInfo)
+
+    const extFields = parseExtendedFields(rawSubInfo)
+
+    const lastUpdate = extFields['last_update']
+
+    const date = expires ? new Date(expires * 1000).toLocaleDateString('sv') : ''
+
+    let show = upload + download
+
+    if (args.showRemaining) show = total - show
+
+    const showT = flowTransfer(Math.abs(show))
+
+    const totalT = flowTransfer(total)
+
+    let name
+
+
+
+    if (args.showLastUpdate && lastUpdate) {
+
+      const shortTime = lastUpdate.slice(5, 16).replace('-', '.')
+
+      name = `${shortTime} | ${showT.value} ${showT.unit}`
+
+      const resetStr = formatResetTime(extFields)
+
+      if (resetStr) name = `${name} | ${resetStr}`
+
+    } else {
+
+      let remainingDays
+
+      try {
+
+        remainingDays = getRmainingDays({ resetDay: args.resetDay, startDate: args.startDate, cycleDays: args.cycleDays })
+
+      } catch (e) {}
+
+      name = `${showT.value} ${showT.unit} / ${totalT.value} ${totalT.unit}`
+
+      if (remainingDays) name = `${name} | ${remainingDays}d`
+
+      if (date) name = `${name} | ${date}`
+
+    }
+
+
+
+    const COMPATIBLE_TYPES = new Set(['ss', 'trojan', 'vmess', 'vless'])
+
+    const lastProxy = proxies[proxies.length - 1]
+
+    const node = lastProxy && COMPATIBLE_TYPES.has(lastProxy.type?.toLowerCase())
+
+    const dummyNode = { type: 'ss', server: '1.0.0.1', port: 443, cipher: 'aes-128-gcm', password: 'password' }
+
+
+
+    proxies.unshift({
+
+      ...(node ? lastProxy : dummyNode),
+
+      name: `♾️ ${name}`,
+
+    })
+
+  }
+
+
 
   return proxies
 
-  function parseFields(raw = '') {
-    const res = {}
-    raw.split(/[;,]/).forEach(s => {
-      const i = s.indexOf('=')
-      if (i !== -1) res[s.slice(0, i).trim()] = s.slice(i + 1).trim().replace(/^['"]|['"]$/g, '')
-    })
-    return res
-  }
-
-  function formatReset(ext) {
-    if (ext.reset_day && parseInt(ext.reset_day) > 0) return `${ext.reset_day}d⏰`
-    if (ext.reset_hour) return `${ext.reset_hour}⏰`
-    return ''
-  }
 }
