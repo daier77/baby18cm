@@ -1,58 +1,54 @@
 /**
- * 终极修正版：流量数据精准对齐
- * 逻辑：直接正则抓取已用流量字段，不经过中间函数转换
+ * 终极手动配置版：解决合并订阅无法穿透抓取流量的问题
+ * 请在下方 URL_MAP 中填入你真实的订阅链接
  */
 async function operator(proxies = [], targetPlatform, context) {
   const $ = $substore
   const { getFlowHeaders, flowTransfer, normalizeFlowHeader } = flowUtils
-  
+
+  // --- 请在此处填入你的订阅链接 ---
+  const URL_MAP = {
+    ykk: 'http://192.168.124.42:8299/sb9ht4Qn0o3sv1uFqZfM/download/YKK',
+    lx: 'https://liangxin.xyz/api/v1/liangxin?0w0=dd8c814e769a5eb94f0a8d39662ff958',
+    pq: 'https://dash.pqjc.site/api/v1/pq/5e3d9a386e2d26d34de25800b4acc3be'
+  }
+  // ----------------------------
+
   const stats = { ykk: 0, lx: 0, pq: 0 }
   let lastUpdate = '', resetDisplay = ''
-  const checkedSubs = new Set()
 
-  for (const p of proxies) {
-    const sName = p._subName || p.subName
-    if (!sName || checkedSubs.has(sName)) continue
+  // 循环请求定义的三个链接
+  for (const type of ['ykk', 'lx', 'pq']) {
+    const url = URL_MAP[type]
+    if (!url) continue
 
-    const pName = (p.name || '').toLowerCase()
-    let type = ''
-    if (pName.includes('ykk')) type = 'ykk'
-    else if (pName.includes('良心')) type = 'lx'
-    else if (pName.includes('赔钱')) type = 'pq'
+    try {
+      const flowInfo = await getFlowHeaders(url)
+      if (flowInfo) {
+        const raw = typeof flowInfo === 'string' ? flowInfo : JSON.stringify(flowInfo)
+        
+        // 正则提取 upload 和 download 字段计算已用流量
+        const uMatch = raw.match(/upload=(\d+)/)
+        const dMatch = raw.match(/download=(\d+)/)
+        
+        if (uMatch && dMatch) {
+          const usedBytes = parseInt(uMatch[1], 10) + parseInt(dMatch[1], 10)
+          stats[type] = usedBytes
+        }
 
-    if (type) {
-      const sub = context.source[sName]
-      if (sub && sub.url) {
-        try {
-          const flowInfo = await getFlowHeaders(sub.url, undefined, undefined, sub.proxy, sub.subUserinfo)
-          if (flowInfo) {
-            const raw = typeof flowInfo === 'string' ? flowInfo : JSON.stringify(flowInfo)
-            
-            // 核心修复：直接从响应头字符串中正则提取 upload 和 download
-            // 格式通常为：upload=xxx; download=xxx; total=xxx;
-            const uMatch = raw.match(/upload=(\d+)/)
-            const dMatch = raw.match(/download=(\d+)/)
-            
-            if (uMatch && dMatch) {
-              const usedBytes = parseInt(uMatch[1], 10) + parseInt(dMatch[1], 10)
-              stats[type] += usedBytes
-            }
-
-            const ext = parseFields(raw)
-            if (!lastUpdate && ext.last_update) lastUpdate = ext.last_update
-            if (!resetDisplay) resetDisplay = formatReset(ext)
-          }
-        } catch (e) {}
+        const ext = parseFields(raw)
+        if (!lastUpdate && ext.last_update) lastUpdate = ext.last_update
+        if (!resetDisplay && type === 'pq') resetDisplay = formatReset(ext) // 优先取赔钱的重置时间
       }
-      checkedSubs.add(sName)
+    } catch (e) {
+      $.error(`${type} 抓取失败: ${e.message}`)
     }
   }
 
-  // 流量格式化 (强制转为 G 或 M，不显示多余小数)
+  // 流量格式化
   const formatUsed = (bytes) => {
     if (!bytes || bytes === 0) return '0M'
     const t = flowTransfer(bytes)
-    // 保持单位首字母大写
     return `${t.value}${t.unit.charAt(0).toUpperCase()}`
   }
 
@@ -60,11 +56,11 @@ async function operator(proxies = [], targetPlatform, context) {
   const lStr = formatUsed(stats.lx)
   const pStr = formatUsed(stats.pq)
 
+  // 处理时间
   const now = new Date()
   let timeStr = lastUpdate ? lastUpdate.slice(5, 16).replace(/-/g, '.') : 
     `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-  
-  timeStr = decodeURIComponent(timeStr).replace(/\s+/g, ' ')
+
   const finalName = `♾️ ${timeStr} | Y${yStr} L${lStr} P${pStr} | ${resetDisplay || '⏰'}`
 
   const TYPES = new Set(['ss', 'trojan', 'vmess', 'vless', 'hysteria2'])
