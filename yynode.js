@@ -1,23 +1,21 @@
 /**
- * 终极手动配置版：解决合并订阅无法穿透抓取流量的问题
- * 请在下方 URL_MAP 中填入你真实的订阅链接
+ * 终极修正版：流量取整显示
+ * 格式：♾️ MM.DD HH:mm | Y83G L0M P76G | ⏰
  */
 async function operator(proxies = [], targetPlatform, context) {
   const $ = $substore
   const { getFlowHeaders, flowTransfer, normalizeFlowHeader } = flowUtils
 
-  // --- 请在此处填入你的订阅链接 ---
+  // --- 请在此处确认订阅链接是否正确 ---
   const URL_MAP = {
     ykk: 'http://192.168.124.42:8299/sb9ht4Qn0o3sv1uFqZfM/download/YKK',
     lx: 'https://liangxin.xyz/api/v1/liangxin?0w0=dd8c814e769a5eb94f0a8d39662ff958',
     pq: 'https://dash.pqjc.site/api/v1/pq/5e3d9a386e2d26d34de25800b4acc3be'
   }
-  // ----------------------------
 
   const stats = { ykk: 0, lx: 0, pq: 0 }
   let lastUpdate = '', resetDisplay = ''
 
-  // 循环请求定义的三个链接
   for (const type of ['ykk', 'lx', 'pq']) {
     const url = URL_MAP[type]
     if (!url) continue
@@ -26,8 +24,6 @@ async function operator(proxies = [], targetPlatform, context) {
       const flowInfo = await getFlowHeaders(url)
       if (flowInfo) {
         const raw = typeof flowInfo === 'string' ? flowInfo : JSON.stringify(flowInfo)
-        
-        // 正则提取 upload 和 download 字段计算已用流量
         const uMatch = raw.match(/upload=(\d+)/)
         const dMatch = raw.match(/download=(\d+)/)
         
@@ -38,27 +34,29 @@ async function operator(proxies = [], targetPlatform, context) {
 
         const ext = parseFields(raw)
         if (!lastUpdate && ext.last_update) lastUpdate = ext.last_update
-        if (!resetDisplay && type === 'pq') resetDisplay = formatReset(ext) // 优先取赔钱的重置时间
+        if (!resetDisplay && type === 'pq') resetDisplay = formatReset(ext)
       }
     } catch (e) {
-      $.error(`${type} 抓取失败: ${e.message}`)
+      $.error(`${type} 抓取失败`)
     }
   }
 
-  // 流量格式化
+  // 流量格式化：强制取整
   const formatUsed = (bytes) => {
     if (!bytes || bytes === 0) return '0M'
     const t = flowTransfer(bytes)
-    return `${t.value}${t.unit.charAt(0).toUpperCase()}`
+    // 使用 Math.floor 丢弃小数部分
+    const integerVal = Math.floor(parseFloat(t.value))
+    const unit = t.unit.charAt(0).toUpperCase()
+    return `${integerVal}${unit}`
   }
 
   const yStr = formatUsed(stats.ykk)
   const lStr = formatUsed(stats.lx)
   const pStr = formatUsed(stats.pq)
 
-  // 处理时间
   const now = new Date()
-  let timeStr = lastUpdate ? lastUpdate.slice(5, 16).replace(/-/g, '.') : 
+  const timeStr = lastUpdate ? lastUpdate.slice(5, 16).replace(/-/g, '.') : 
     `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 
   const finalName = `♾️ ${timeStr} | Y${yStr} L${lStr} P${pStr} | ${resetDisplay || '⏰'}`
