@@ -9,7 +9,7 @@ async function operator(proxies = [], targetPlatform, context) {
   // --- 请在此处确认订阅链接是否正确 ---
   const URL_MAP = {
     ykk: 'http://192.168.124.42:8299/sb9ht4Qn0o3sv1uFqZfM/download/YKK',
-    lx: 'https://liangxin.xyz/api/v1/liangxin?0w0=dd8c814e769a5eb94f0a8d39662ff958',
+    lx: 'https://liangxin.xyz/api/v1/liangxin?OwO=dd8c814e769a5eb94f0a8d39662ff958',
     pq: 'https://dash.pqjc.site/api/v1/pq/5e3d9a386e2d26d34de25800b4acc3be'
   }
 
