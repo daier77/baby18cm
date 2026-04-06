@@ -1,3 +1,13 @@
+#域名类规则
+#DOMAIN 匹配整个域名
+#如：DOMAIN,google.com,proxy
+
+#DOMAIN-SUFFIX 匹配域名后缀，例如apple.com可以匹配icloud.apple.com，www.apple.com，但是不能够匹配app-apple.com
+#如：DOMAIN-SUFFIX,apple.com,proxy
+
+#DOMAIN-KEYWORD 域名关键词匹配
+#如：DOMAIN-KEYWORD,apple,proxy
+
 #此库为强制代理❗️
 #🌱youno cf线路走代理#
 #DOMAIN,emby.younoyes.com
@@ -26,4 +36,4 @@ DOMAIN-SUFFIX,hk.wedg.top
 #🌱雪山机场服 
 DOMAIN-SUFFIX,xueshan.liminalnet.com
 #🌱ask
-DOMAIN-SUFFIX,ask.ash.yt:443
+DOMAIN-SUFFIX,ask.ash.yt
