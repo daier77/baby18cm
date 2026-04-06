@@ -1,3 +1,14 @@
+#域名类规则
+#DOMAIN 匹配整个域名
+#如：DOMAIN,google.com,proxy
+
+#DOMAIN-SUFFIX 匹配域名后缀，例如apple.com可以匹配icloud.apple.com，www.apple.com，但是不能够匹配app-apple.com
+#如：DOMAIN-SUFFIX,apple.com,proxy
+
+#DOMAIN-KEYWORD 域名关键词匹配
+#如：DOMAIN-KEYWORD,apple,proxy
+
+
 #此库为强制直连❗️
 #🌱xigua#
 DOMAIN-SUFFIX,www.yuntv.de
